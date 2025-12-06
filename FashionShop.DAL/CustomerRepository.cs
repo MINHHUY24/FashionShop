@@ -1,5 +1,6 @@
 ﻿using FashionShop.DTO;
 using MySql.Data.MySqlClient;
+using System;
 using System.Data;
 
 namespace FashionShop.DAL
@@ -102,6 +103,55 @@ namespace FashionShop.DAL
                 var dt = new DataTable();
                 da.Fill(dt);
                 return dt;
+            }
+        }
+
+        public int AddPoints(int customerId, int addPts)
+        {
+            using (var conn = DbContext.GetConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    @"UPDATE customers 
+              SET points = points + @pts 
+              WHERE customer_id = @id", conn);
+
+                cmd.Parameters.AddWithValue("@pts", addPts);
+                cmd.Parameters.AddWithValue("@id", customerId);
+
+                return cmd.ExecuteNonQuery();
+            }
+        }
+
+        public int GetPoints(int customerId)
+        {
+            using (var conn = DbContext.GetConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    "SELECT points FROM customers WHERE customer_id=@id", conn);
+                cmd.Parameters.AddWithValue("@id", customerId);
+
+                object val = cmd.ExecuteScalar();
+                if (val == null || val == DBNull.Value) return 0;
+                return Convert.ToInt32(val);
+            }
+        }
+
+        public int SetPoints(int customerId, int newPoints)
+        {
+            using (var conn = DbContext.GetConnection())
+            {
+                conn.Open();
+                var cmd = new MySqlCommand(
+                    @"UPDATE customers 
+              SET points = @pt 
+              WHERE customer_id = @id", conn);
+
+                cmd.Parameters.AddWithValue("@pt", newPoints);
+                cmd.Parameters.AddWithValue("@id", customerId);
+
+                return cmd.ExecuteNonQuery();
             }
         }
     }

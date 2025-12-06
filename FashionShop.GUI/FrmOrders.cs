@@ -19,13 +19,37 @@ namespace FashionShop.GUI
         private DataGridView dgvProducts, dgvCart;
         private ComboBox cboCustomers;
         private NumericUpDown nudQty;
-        private Label lblTotal;
+        private Label lblTotal, lblPoints;
         private TextBox txtSearch;
         private Button btnAdd, btnRemove, btnCheckout, btnSearch;
+
+        // ===== Payment/Points UI labels =====
+        private Label lblRawTotal, lblDiscount, lblDiscountHint, lblFinalTotal;
+        private Label lblOldPoints, lblEarnPoints, lblAfterPoints;
+        private int oldPoints = 0;
+        private decimal discountRate = 0m;
 
         private List<OrderDetail> cart = new List<OrderDetail>();
         private DataTable productsTable;     // bảng gốc
         private DataView productsView;       // view để search
+
+        // ===== search helpers =====
+        private string colCode;
+        private string colName;
+        private readonly string hint = "Enter product name...";
+
+        private Image ResizeImage(Image img, int w, int h)
+        {
+            var bmp = new Bitmap(w, h);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+                g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+                g.DrawImage(img, 0, 0, w, h);
+            }
+            return bmp;
+        }
 
         public FrmOrders(Account acc)
         {
@@ -61,32 +85,46 @@ namespace FashionShop.GUI
             };
             split.Panel1.Controls.Add(gbProducts);
 
+
             // Search bar
             var pnlSearch = new TableLayoutPanel
             {
                 Dock = DockStyle.Top,
-                Height = 46,
-                ColumnCount = 2
+                Height = 43,
+                ColumnCount = 2,
+                Padding = new Padding(0),
+                Margin = new Padding(0)
             };
-            pnlSearch.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 80));
-            pnlSearch.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20));
+
+            pnlSearch.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            pnlSearch.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 46));
 
             txtSearch = new TextBox
             {
+                Height = 45,
                 Dock = DockStyle.Fill,
                 Font = new Font("Segoe UI", 12f),
-                Margin = new Padding(0, 6, 8, 6)
+
+                // GIẢM margin phải để cân với nút đỏ
+                Margin = new Padding(0, 6, 4, 6)
             };
 
-            btnSearch = MakeButton("Search", Color.FromArgb(63, 81, 181));
+            btnSearch = MakeButton("", Color.FromArgb(244, 67, 54));
             btnSearch.Dock = DockStyle.Fill;
             btnSearch.Margin = new Padding(0, 6, 0, 6);
 
+            // add vào layout
             pnlSearch.Controls.Add(txtSearch, 0, 0);
             pnlSearch.Controls.Add(btnSearch, 1, 0);
 
+            // icon trong nút đỏ: CANH GIỮA cho cân dọc
+            btnSearch.Image = ResizeImage(Properties.Resources.delete, 18, 18);
+            btnSearch.ImageAlign = ContentAlignment.MiddleCenter;
+            btnSearch.TextImageRelation = TextImageRelation.Overlay;
+            btnSearch.Padding = new Padding(0);
+
+
             // Placeholder
-            string hint = "Enter product code or name...";
             txtSearch.Text = hint;
             txtSearch.ForeColor = Color.Gray;
 
@@ -107,25 +145,31 @@ namespace FashionShop.GUI
                 }
             };
 
-            btnSearch.Click += (s, e) =>
+            // ===== Events search mới =====
+            btnSearch.Click += (s, e) => {
+                // xóa text, trả về hint
+                txtSearch.Text = hint;
+                txtSearch.ForeColor = Color.Gray;
+
+                // reset filter & hiện full list
+                if (productsView != null)
+                    productsView.RowFilter = "";
+            };
+
+            // live search khi gõ
+            txtSearch.TextChanged += (s, e) =>
             {
-                if (productsView == null) return;
+                if (txtSearch.Focused) ApplySearch();
+            };
 
-                var key = txtSearch.Text.Trim();
-                if (key == hint) key = "";
-
-                // reset filter trước
-                productsView.RowFilter = "";
-
-                if (!string.IsNullOrWhiteSpace(key))
+            // Enter để search luôn
+            txtSearch.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Enter)
                 {
-                    key = key.Replace("'", "''");
-                    productsView.RowFilter =
-                    $"[product_code] LIKE '%{key}%' OR [product_name] LIKE '%{key}%'";
-
+                    e.SuppressKeyPress = true;
+                    ApplySearch();
                 }
-
-                dgvProducts.DataSource = productsView.ToTable();
             };
 
             // Grid products
@@ -148,7 +192,7 @@ namespace FashionShop.GUI
             {
                 Dock = DockStyle.Bottom,
                 Height = 60,
-                Padding = new Padding(0, 8, 0, 0),
+                Padding = new Padding(0, 20, 0, 0),
                 BackColor = Color.Transparent
             };
 
@@ -208,7 +252,7 @@ namespace FashionShop.GUI
             };
             StyleGrid(dgvCart);
 
-            // Customer + total area
+            // ================= Payment Summary =================
             var pnlInfo = new TableLayoutPanel
             {
                 Dock = DockStyle.Top,
@@ -216,11 +260,20 @@ namespace FashionShop.GUI
                 ColumnCount = 2,
                 Padding = new Padding(0, 10, 0, 0)
             };
-            pnlInfo.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+            pnlInfo.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
             pnlInfo.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            pnlInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-            pnlInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
 
+            // rows
+            pnlInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 38)); // Customer
+            pnlInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 30)); // Sub total
+            pnlInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 30)); // Discount
+            pnlInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 24)); // Discount hint
+            pnlInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 42)); // Final total
+            pnlInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 28)); // Old points
+            pnlInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 28)); // Earn points
+            pnlInfo.RowStyles.Add(new RowStyle(SizeType.Absolute, 30)); // After points
+
+            // --- Row 0: Customer ---
             pnlInfo.Controls.Add(new Label
             {
                 Text = "Customer",
@@ -235,28 +288,125 @@ namespace FashionShop.GUI
             };
             pnlInfo.Controls.Add(cboCustomers, 1, 0);
 
+            // --- Row 1: Sub total ---
             pnlInfo.Controls.Add(new Label
             {
-                Text = "Total",
+                Text = "Sub total",
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft
             }, 0, 1);
 
-            lblTotal = new Label
+            lblRawTotal = new Label
             {
-                Text = "Total: 0 đ",
-                Font = new Font("Segoe UI", 13, FontStyle.Bold),
+                Text = "0 đ",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+            pnlInfo.Controls.Add(lblRawTotal, 1, 1);
+
+            // --- Row 2: Discount ---
+            pnlInfo.Controls.Add(new Label
+            {
+                Text = "Discount",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            }, 0, 2);
+
+            lblDiscount = new Label
+            {
+                Text = "0%",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                ForeColor = Color.FromArgb(244, 67, 54)
+            };
+            pnlInfo.Controls.Add(lblDiscount, 1, 2);
+
+            // --- Row 3: Discount hint (span 2 cols) ---
+            lblDiscountHint = new Label
+            {
+                Text = "Need 100 points to get 10% off",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                ForeColor = Color.Gray,
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Italic),
+                Padding = new Padding(0, 0, 0, 6)
+            };
+            pnlInfo.Controls.Add(lblDiscountHint, 0, 3);
+            pnlInfo.SetColumnSpan(lblDiscountHint, 2);
+
+            // --- Row 4: Final total ---
+            pnlInfo.Controls.Add(new Label
+            {
+                Text = "Final total",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            }, 0, 4);
+
+            lblFinalTotal = new Label
+            {
+                Text = "0 đ",
+                Font = new Font("Segoe UI", 14, FontStyle.Bold),
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft,
                 ForeColor = Color.FromArgb(33, 33, 33)
             };
-            pnlInfo.Controls.Add(lblTotal, 1, 1);
+            pnlInfo.Controls.Add(lblFinalTotal, 1, 4);
+
+            // --- Row 5: Old points ---
+            pnlInfo.Controls.Add(new Label
+            {
+                Text = "Old points",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            }, 0, 5);
+
+            lblOldPoints = new Label
+            {
+                Text = "0",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+            pnlInfo.Controls.Add(lblOldPoints, 1, 5);
+
+            // --- Row 6: Earn points ---
+            pnlInfo.Controls.Add(new Label
+            {
+                Text = "Earned points",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            }, 0, 6);
+
+            lblEarnPoints = new Label
+            {
+                Text = "+0",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+            pnlInfo.Controls.Add(lblEarnPoints, 1, 6);
+
+            // --- Row 7: After points ---
+            pnlInfo.Controls.Add(new Label
+            {
+                Text = "After checkout",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            }, 0, 7);
+
+            lblAfterPoints = new Label
+            {
+                Text = "0",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Font = new Font("Segoe UI", 11, FontStyle.Bold)
+            };
+            pnlInfo.Controls.Add(lblAfterPoints, 1, 7);
+
 
             // Buttons bottom right
             var btnGrid = new TableLayoutPanel
             {
                 Dock = DockStyle.Bottom,
-                Height = 70,
+                Height = 65,
                 ColumnCount = 2,
                 RowCount = 1,
                 Padding = new Padding(0, 10, 0, 0)
@@ -296,18 +446,116 @@ namespace FashionShop.GUI
             // Load data
             Load += (s, e) =>
             {
-                productsTable = productService.GetForSale();
-                productsView = productsTable.DefaultView;
-
-                dgvProducts.DataSource = productsTable;
+                ReloadProducts();
 
                 cboCustomers.DataSource = customerService.GetForCombo();
                 cboCustomers.DisplayMember = "customer_name";
                 cboCustomers.ValueMember = "customer_id";
                 cboCustomers.SelectedIndex = -1;
 
+                // ===== GẮN EVENT Ở ĐÂY =====
+                cboCustomers.SelectedIndexChanged += (s2, e2) =>
+                {
+                    if (cboCustomers.SelectedIndex >= 0)
+                    {
+                        int cid2 = Convert.ToInt32(cboCustomers.SelectedValue);
+                        oldPoints = customerService.GetPoints(cid2);
+                    }
+                    else oldPoints = 0;
+
+                    RefreshCart(); // tính lại total/points/discount theo khách mới
+                };
+
                 RefreshCart();
             };
+        }
+
+        // ================= SEARCH CORE =================
+
+        private void ReloadProducts()
+        {
+            productsTable = productService.GetForSale();
+            ResolveProductColumns();
+
+            productsView = productsTable.DefaultView;
+            dgvProducts.DataSource = productsView;
+
+            SetupAutoComplete();
+            ApplySearch(); // nếu đang có chữ trong ô search thì lọc lại
+        }
+
+        private void ResolveProductColumns()
+        {
+            if (productsTable == null) return;
+
+            string[] codeCandidates = { "product_code", "ProductCode", "code", "productCode" };
+            string[] nameCandidates = { "product_name", "ProductName", "name", "productName" };
+
+            colCode = productsTable.Columns
+                .Cast<DataColumn>()
+                .Select(c => c.ColumnName)
+                .FirstOrDefault(n => codeCandidates.Contains(n));
+
+            colName = productsTable.Columns
+                .Cast<DataColumn>()
+                .Select(c => c.ColumnName)
+                .FirstOrDefault(n => nameCandidates.Contains(n));
+        }
+
+        private void ApplySearch()
+        {
+            if (productsView == null) return;
+
+            var key = txtSearch.Text.Trim();
+            if (key == hint) key = "";
+
+            productsView.RowFilter = "";
+
+            if (!string.IsNullOrWhiteSpace(key))
+            {
+                key = key.Replace("'", "''");
+
+                if (!string.IsNullOrEmpty(colCode) && !string.IsNullOrEmpty(colName))
+                {
+                    productsView.RowFilter =
+                        $"[{colCode}] LIKE '%{key}%' OR [{colName}] LIKE '%{key}%'";
+                }
+                else if (!string.IsNullOrEmpty(colName))
+                {
+                    productsView.RowFilter = $"[{colName}] LIKE '%{key}%'";
+                }
+            }
+        }
+
+        private void SetupAutoComplete()
+        {
+            if (productsTable == null) return;
+
+            var src = new AutoCompleteStringCollection();
+
+            if (!string.IsNullOrEmpty(colCode))
+            {
+                var codes = productsTable.AsEnumerable()
+                    .Select(r => r[colCode]?.ToString())
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct()
+                    .ToArray();
+                src.AddRange(codes);
+            }
+
+            if (!string.IsNullOrEmpty(colName))
+            {
+                var names = productsTable.AsEnumerable()
+                    .Select(r => r[colName]?.ToString())
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct()
+                    .ToArray();
+                src.AddRange(names);
+            }
+
+            txtSearch.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
+            txtSearch.AutoCompleteSource = AutoCompleteSource.CustomSource;
+            txtSearch.AutoCompleteCustomSource = src;
         }
 
         // ================= UI HELPERS =================
@@ -326,13 +574,22 @@ namespace FashionShop.GUI
             };
         }
 
-        private void StyleGrid(DataGridView g)
+        void StyleGrid(DataGridView g)
         {
             g.EnableHeadersVisualStyles = false;
             g.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(245, 245, 245);
             g.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI Semibold", 10f);
             g.ColumnHeadersDefaultCellStyle.ForeColor = Color.Black;
-            g.ColumnHeadersHeight = 38;
+
+            // ===== FIX CỨNG Ô =====
+            g.AllowUserToResizeColumns = false;
+            g.AllowUserToResizeRows = false;
+            g.RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing;
+            g.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+
+            g.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None;
+            g.RowTemplate.Height = 32;     // chiều cao dòng cố định
+            g.ColumnHeadersHeight = 38;    // header cố định
 
             g.DefaultCellStyle.Font = new Font("Segoe UI", 10f);
             g.DefaultCellStyle.SelectionBackColor = Color.FromArgb(33, 150, 243);
@@ -340,7 +597,26 @@ namespace FashionShop.GUI
             g.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(250, 250, 250);
         }
 
-        // ================= LOGIC GIỮ NGUYÊN =================
+        private void InitializeComponent()
+        {
+            this.SuspendLayout();
+            // 
+            // FrmOrders
+            // 
+            this.ClientSize = new System.Drawing.Size(282, 253);
+            this.Name = "FrmOrders";
+            this.Load += new System.EventHandler(this.FrmOrders_Load);
+            this.ResumeLayout(false);
+
+        }
+
+        private void FrmOrders_Load(object sender, EventArgs e)
+        {
+
+        }
+
+        // ================= BUSINESS LOGIC =================
+
         private void AddToCart(object sender, EventArgs e)
         {
             if (dgvProducts.CurrentRow == null) return;
@@ -392,19 +668,48 @@ namespace FashionShop.GUI
         }
 
         private void RefreshCart()
-        {
-            dgvCart.DataSource = null;
-            dgvCart.DataSource = cart.Select(x => new
-            {
-                x.ProductId,
-                x.ProductName,
-                x.Quantity,
-                x.UnitPrice,
-                x.SubTotal
-            }).ToList();
+{
+    dgvCart.DataSource = null;
+    dgvCart.DataSource = cart.Select(x => new
+    {
+        x.ProductId,
+        x.ProductName,
+        x.Quantity,
+        x.UnitPrice,
+        x.SubTotal
+    }).ToList();
 
-            lblTotal.Text = "Total: " + cart.Sum(x => x.SubTotal).ToString("N0") + " đ";
-        }
+    decimal rawTotal = cart.Sum(x => x.SubTotal);
+
+    int newPoints = (int)(rawTotal / 50000m); // 1 point = 50,000đ
+    int afterPoints = oldPoints + newPoints;
+
+    discountRate = afterPoints >= 100 ? 0.10m : 0m;
+    decimal finalTotal = rawTotal * (1 - discountRate);
+
+    // ===== Payment UI =====
+    lblRawTotal.Text = $"{rawTotal:N0} đ";
+
+    lblDiscount.Text = discountRate > 0 ? "10%" : "0%";
+    lblDiscount.ForeColor = discountRate > 0
+        ? Color.FromArgb(76, 175, 80)
+        : Color.FromArgb(244, 67, 54);
+
+    lblDiscountHint.Text = afterPoints >= 100
+        ? "Eligible for 10% off"
+        : "Need 100 points to get 10% off";
+    lblDiscountHint.ForeColor = afterPoints >= 100
+        ? Color.FromArgb(76, 175, 80)
+        : Color.Gray;
+
+    lblFinalTotal.Text = $"{finalTotal:N0} đ";
+
+    // ===== Points UI =====
+    lblOldPoints.Text = oldPoints.ToString("N0");
+    lblEarnPoints.Text = "+" + newPoints.ToString("N0");
+    lblAfterPoints.Text = afterPoints.ToString("N0");
+}
+
 
         private void Checkout(object sender, EventArgs e)
         {
@@ -412,6 +717,26 @@ namespace FashionShop.GUI
             if (cboCustomers.SelectedIndex >= 0)
                 cid = Convert.ToInt32(cboCustomers.SelectedValue);
 
+            if (cart.Count == 0)
+            {
+                MessageBox.Show("Cart is empty!");
+                return;
+            }
+
+            // ===== raw total =====
+            decimal rawTotal = cart.Sum(x => x.SubTotal);
+
+            // ===== points mới theo rule =====
+            int newPoints = (int)(rawTotal / 50000m);
+
+            // ===== tổng points sau mua =====
+            int totalPointsAfter = oldPoints + newPoints;
+
+            // ===== discount nếu đủ 100 points =====
+            decimal discountRate = totalPointsAfter >= 100 ? 0.10m : 0m;
+            decimal finalTotal = rawTotal * (1 - discountRate);
+
+            // ===== checkout order =====
             int orderId = orderService.Checkout(current.EmployeeId, cid, cart, out string err);
             if (orderId < 0)
             {
@@ -419,14 +744,33 @@ namespace FashionShop.GUI
                 return;
             }
 
-            MessageBox.Show("Checkout success! Order ID: " + orderId);
+            // ===== cộng points mới cho customer =====
+            if (cid.HasValue)
+            {
+                int used = totalPointsAfter >= 100 ? 100 : 0;
+
+                int finalPoints = oldPoints + newPoints - used;
+                if (finalPoints < 0) finalPoints = 0;
+
+                if (!customerService.SetPoints(cid.Value, finalPoints, out string perr))
+                    MessageBox.Show("Checkout OK but update points failed: " + perr);
+            }
+
+            MessageBox.Show(
+                $"Checkout success! Order ID: {orderId}\n" +
+                $"Raw total: {rawTotal:N0} đ\n" +
+                $"Discount: {(discountRate * 100):0}%\n" +
+                $"Final total: {finalTotal:N0} đ\n" +
+                $"Old points: {oldPoints}\n" +
+                $"Earned: +{newPoints}\n" +
+                $"After: {totalPointsAfter}"
+            );
 
             cart.Clear();
+            ReloadProducts();
 
-            // reload stock mới
-            productsTable = productService.GetForSale();
-            productsView = productsTable.DefaultView;
-            dgvProducts.DataSource = productsTable;
+            // reset lại oldPoints nếu bạn muốn về 0 khi bỏ chọn khách
+            // oldPoints = 0;
 
             RefreshCart();
         }
