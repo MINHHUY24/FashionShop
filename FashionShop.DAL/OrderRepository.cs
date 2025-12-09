@@ -175,7 +175,13 @@ namespace FashionShop.DAL
                 e.employee_name,
                 o.total_amount,
 
+                -- ✅ thêm các cột giống Cart
+                p.product_id,
                 p.product_name,
+                p.size,
+                p.color,
+                p.stock,
+
                 od.quantity,
                 od.unit_price,
                 (od.quantity * od.unit_price) AS line_total
@@ -213,5 +219,6 @@ namespace FashionShop.DAL
             }
             return dt;
         }
+    
     }
 }
