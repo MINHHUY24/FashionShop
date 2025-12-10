@@ -42,7 +42,7 @@
             this.txtSearch.Location = new System.Drawing.Point(12, 12);
             this.txtSearch.Margin = new System.Windows.Forms.Padding(0, 4, 10, 4);
             this.txtSearch.Name = "txtSearch";
-            this.txtSearch.Size = new System.Drawing.Size(506, 30);
+            this.txtSearch.Size = new System.Drawing.Size(506, 25);
             this.txtSearch.TabIndex = 0;
             // 
             // dtFrom
@@ -52,7 +52,7 @@
             this.dtFrom.Location = new System.Drawing.Point(586, 11);
             this.dtFrom.Name = "dtFrom";
             this.dtFrom.ShowCheckBox = true;
-            this.dtFrom.Size = new System.Drawing.Size(134, 30);
+            this.dtFrom.Size = new System.Drawing.Size(134, 25);
             this.dtFrom.TabIndex = 2;
             // 
             // dtTo
@@ -62,7 +62,7 @@
             this.dtTo.Location = new System.Drawing.Point(761, 11);
             this.dtTo.Name = "dtTo";
             this.dtTo.ShowCheckBox = true;
-            this.dtTo.Size = new System.Drawing.Size(134, 30);
+            this.dtTo.Size = new System.Drawing.Size(134, 25);
             this.dtTo.TabIndex = 4;
             // 
             // btnSearch
@@ -104,6 +104,7 @@
             this.dgvHistory.RowHeadersWidth = 82;
             this.dgvHistory.Size = new System.Drawing.Size(1100, 600);
             this.dgvHistory.TabIndex = 0;
+            this.dgvHistory.CellContentClick += new System.Windows.Forms.DataGridViewCellEventHandler(this.dgvHistory_CellContentClick);
             // 
             // lblFrom
             // 
@@ -155,7 +156,7 @@
             // 
             // FrmHistory
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 23F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 17F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.White;
             this.ClientSize = new System.Drawing.Size(1100, 650);
