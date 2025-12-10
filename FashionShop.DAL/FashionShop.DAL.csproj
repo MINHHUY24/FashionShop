@@ -90,6 +90,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AccountRepository.cs" />
     <Compile Include="AuthRepository.cs" />
     <Compile Include="CategoryRepository.cs" />
     <Compile Include="ColorRepository.cs" />

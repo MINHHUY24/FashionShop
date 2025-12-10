@@ -363,5 +363,9 @@ namespace FashionShop.GUI
 
         private void FrmHistory_Load_1(object sender, EventArgs e) { }
 
+        private void dgvHistory_CellContentClick(object sender, DataGridViewCellEventArgs e)
+        {
+
+        }
     }
 }

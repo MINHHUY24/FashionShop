@@ -8,89 +8,120 @@ using FashionShop.DTO;
 
 namespace FashionShop.GUI
 {
-    public partial class FrmCategories : Form
+    public partial class FrmAccounts : Form
     {
-        private readonly CategoryService service = new CategoryService();
+        private readonly AccountService service = new AccountService();
         private readonly Account current;
 
         private DataGridView dgv;
-        private TextBox txtId, txtName, txtSearch;
-        private Button btnAdd, btnUpd, btnDel, btnReload, btnClearSearch;
+        private TextBox txtUser, txtPass, txtSearch;
+        private ComboBox cboStaff;
+        private Button btnAdd, btnDel, btnReload, btnClearSearch;
+        private Label lblCount;
 
-        private DataTable categoriesTable;
-        private DataView categoriesView;
-        private readonly string hintSearch = "Search category name...";
+        private DataTable accountsTable;
+        private DataView accountsView;
+        private readonly string hintSearch = "Search staff username...";
 
-        public FrmCategories(Account acc)
+        public FrmAccounts(Account acc)
         {
             current = acc;
 
-            // ===== Form base (GIỐNG FrmColors) =====
-            Text = "Manage Categories";
-            Size = new Size(520, 420);
+            Text = "Manage Staff Accounts";
+            Size = new Size(720, 520);
             StartPosition = FormStartPosition.CenterParent;
             BackColor = Color.White;
             Font = new Font("Segoe UI", 10f);
-            MinimumSize = new Size(520, 420);
+            MinimumSize = new Size(720, 520);
+
+            // ✅ Designer có thể vẫn tồn tại nhưng không bắt buộc gọi,
+            // gọi cũng không sao vì chúng ta không tự viết InitializeComponent ở đây.
+            // Nếu designer file bạn vẫn có, dòng này OK.
+            InitializeComponent();
 
             BuildUI();
             ApplyRolePermission();
+        }
+
+        // ✅ HÀM LOAD ĐÚNG TÊN để Designer không báo CS1061
+        private void FrmAccounts_Load(object sender, EventArgs e)
+        {
+            LoadStaffCombo();
             LoadGrid();
         }
 
-        public FrmCategories() : this(null) { }
-
         private void BuildUI()
         {
-            // ===== Root layout (GIỐNG FrmColors) =====
+            Controls.Clear();
+
             var root = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
-                RowCount = 4,
+                RowCount = 5,
                 ColumnCount = 1
             };
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 90));   // input
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));   // buttons
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 45));   // search
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));   // grid
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 140)); // input
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 45));  // buttons
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 45));  // search
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));  // count
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // grid
             Controls.Add(root);
 
-            // ================= INPUT AREA =================
+            // ===== INPUT =====
             var pnlInput = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
-                Padding = new Padding(10),
+                Padding = new Padding(10)
             };
-            pnlInput.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
+            pnlInput.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
             pnlInput.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-            pnlInput.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
-            pnlInput.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
+            pnlInput.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // staff
+            pnlInput.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // username
+            pnlInput.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // password
 
             pnlInput.Controls.Add(new Label
             {
-                Text = "Id",
+                Text = "Staff employee",
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft
             }, 0, 0);
 
-            txtId = new TextBox { Dock = DockStyle.Fill, ReadOnly = true };
-            pnlInput.Controls.Add(txtId, 1, 0);
+            cboStaff = new ComboBox
+            {
+                Dock = DockStyle.Fill,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            pnlInput.Controls.Add(cboStaff, 1, 0);
 
             pnlInput.Controls.Add(new Label
             {
-                Text = "Category",
+                Text = "Username",
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft
             }, 0, 1);
 
-            txtName = new TextBox { Dock = DockStyle.Fill };
-            pnlInput.Controls.Add(txtName, 1, 1);
+            txtUser = new TextBox { Dock = DockStyle.Fill };
+            pnlInput.Controls.Add(txtUser, 1, 1);
+
+            pnlInput.Controls.Add(new Label
+            {
+                Text = "Password",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            }, 0, 2);
+
+            txtPass = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                UseSystemPasswordChar = true
+            };
+            pnlInput.Controls.Add(txtPass, 1, 2);
 
             root.Controls.Add(pnlInput, 0, 0);
 
-            // ================= BUTTONS AREA =================
+            // ===== BUTTONS =====
             var pnlBtn = new FlowLayoutPanel
             {
                 Dock = DockStyle.Fill,
@@ -98,24 +129,23 @@ namespace FashionShop.GUI
                 Padding = new Padding(10, 0, 10, 0)
             };
 
-            btnAdd = MakeButton("Add", Color.FromArgb(33, 150, 243));
-            btnUpd = MakeButton("Update", Color.FromArgb(76, 175, 80));
-            btnDel = MakeButton("Delete", Color.FromArgb(244, 67, 54));
+            btnAdd = MakeButton("Create Staff", Color.FromArgb(33, 150, 243));
+            btnDel = MakeButton("Delete Staff", Color.FromArgb(244, 67, 54));
             btnReload = MakeButton("Reload", Color.FromArgb(96, 125, 139));
 
-            pnlBtn.Controls.AddRange(new Control[] { btnAdd, btnUpd, btnDel, btnReload });
+            pnlBtn.Controls.AddRange(new Control[] { btnAdd, btnDel, btnReload });
             root.Controls.Add(pnlBtn, 0, 1);
 
             btnAdd.Click += BtnAdd_Click;
-            btnUpd.Click += BtnUpd_Click;
             btnDel.Click += BtnDel_Click;
             btnReload.Click += (s, e) =>
             {
+                LoadStaffCombo();
                 LoadGrid();
                 ClearForm();
             };
 
-            // ================= SEARCH AREA =================
+            // ===== SEARCH =====
             var pnlSearch = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
@@ -174,10 +204,21 @@ namespace FashionShop.GUI
             {
                 txtSearch.Text = hintSearch;
                 txtSearch.ForeColor = Color.Gray;
-                if (categoriesView != null) categoriesView.RowFilter = "";
+                if (accountsView != null) accountsView.RowFilter = "";
             };
 
-            // ================= GRID AREA =================
+            // ===== COUNT =====
+            lblCount = new Label
+            {
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(12, 0, 0, 0),
+                Font = new Font("Segoe UI Semibold", 10.5f),
+                ForeColor = Color.FromArgb(33, 33, 33)
+            };
+            root.Controls.Add(lblCount, 0, 3);
+
+            // ===== GRID =====
             dgv = new DataGridView
             {
                 Dock = DockStyle.Fill,
@@ -190,47 +231,44 @@ namespace FashionShop.GUI
                 BackgroundColor = Color.White,
                 BorderStyle = BorderStyle.FixedSingle,
             };
-            dgv.CellClick += Dgv_CellClick;
             StyleGrid(dgv);
-
-            root.Controls.Add(dgv, 0, 3);
+            root.Controls.Add(dgv, 0, 4);
         }
 
-        // ================= LOAD + SEARCH =================
+        private void LoadStaffCombo()
+        {
+            var dt = service.GetStaffEmployeesForCombo();
+            cboStaff.DataSource = dt;
+            cboStaff.DisplayMember = "employee_name";
+            cboStaff.ValueMember = "employee_id";
+            cboStaff.SelectedIndex = dt.Rows.Count > 0 ? 0 : -1;
+        }
+
         private void LoadGrid()
         {
-            categoriesTable = service.GetAll();
-            categoriesView = categoriesTable.DefaultView;
+            accountsTable = service.GetStaffAccounts();
+            accountsView = accountsTable.DefaultView;
+            dgv.DataSource = accountsView;
 
-            dgv.DataSource = categoriesView;
-
-            if (dgv.Columns.Contains("category_id"))
-                dgv.Columns["category_id"].HeaderText = "Id";
-            if (dgv.Columns.Contains("category_name"))
-                dgv.Columns["category_name"].HeaderText = "Category";
+            lblCount.Text = $"Total staff accounts: {accountsTable.Rows.Count}";
         }
 
         private void ApplySearch()
         {
-            if (categoriesView == null) return;
+            if (accountsView == null) return;
 
             string key = txtSearch.Text.Trim();
             if (key == hintSearch) key = "";
-
-            categoriesView.RowFilter = "";
+            accountsView.RowFilter = "";
 
             if (!string.IsNullOrWhiteSpace(key))
             {
                 key = key.Replace("'", "''");
-                if (categoriesTable.Columns.Contains("category_name"))
-                {
-                    categoriesView.RowFilter =
-                        $"CONVERT([category_name], 'System.String') LIKE '%{key}%'";
-                }
+                accountsView.RowFilter =
+                    $"CONVERT([username], 'System.String') LIKE '%{key}%'";
             }
         }
 
-        // ================= PERMISSION =================
         private void ApplyRolePermission()
         {
             bool isAdmin = current != null &&
@@ -238,105 +276,70 @@ namespace FashionShop.GUI
                            current.Role.Equals("Admin", StringComparison.OrdinalIgnoreCase);
 
             btnAdd.Enabled = isAdmin;
-            btnUpd.Enabled = isAdmin;
             btnDel.Enabled = isAdmin;
-            txtName.ReadOnly = !isAdmin;
-
-            if (!isAdmin)
-                Text += " (View only)";
+            txtUser.ReadOnly = !isAdmin;
+            txtPass.ReadOnly = !isAdmin;
+            cboStaff.Enabled = isAdmin;
         }
 
-        // ================= ACTIONS =================
         private void BtnAdd_Click(object sender, EventArgs e)
         {
-            string name = txtName.Text.Trim();
-            if (service.Add(name, out string err))
+            string username = txtUser.Text.Trim();
+            string password = txtPass.Text.Trim();
+            int employeeId = cboStaff.SelectedIndex >= 0
+                ? Convert.ToInt32(cboStaff.SelectedValue)
+                : 0;
+
+            if (service.CreateStaffAccount(username, password, employeeId, out string err))
             {
-                MessageBox.Show("Added!");
+                MessageBox.Show("Created staff account!");
                 LoadGrid();
                 ClearForm();
             }
             else MessageBox.Show(err);
         }
 
-        private void InitializeComponent()
-        {
-            this.SuspendLayout();
-            // 
-            // FrmCategories
-            // 
-            this.ClientSize = new System.Drawing.Size(284, 261);
-            this.Name = "FrmCategories";
-            this.Load += new System.EventHandler(this.FrmCategories_Load);
-            this.ResumeLayout(false);
-
-        }
-
-        private void FrmCategories_Load(object sender, EventArgs e)
-        {
-
-        }
-
-        private void BtnUpd_Click(object sender, EventArgs e)
-        {
-            if (!int.TryParse(txtId.Text, out int id))
-            {
-                MessageBox.Show("Please choose a category first.");
-                return;
-            }
-
-            string name = txtName.Text.Trim();
-            if (service.Update(id, name, out string err))
-            {
-                MessageBox.Show("Updated!");
-                LoadGrid();
-            }
-            else MessageBox.Show(err);
-        }
-
         private void BtnDel_Click(object sender, EventArgs e)
         {
-            if (!int.TryParse(txtId.Text, out int id))
+            if (dgv.CurrentRow == null)
             {
-                MessageBox.Show("Please choose a category first.");
+                MessageBox.Show("Please choose a staff account first.");
                 return;
             }
 
-            if (MessageBox.Show("Delete this category?", "Confirm",
-                    MessageBoxButtons.YesNo) == DialogResult.Yes)
+            int accountId = Convert.ToInt32(dgv.CurrentRow.Cells["account_id"].Value);
+            string username = dgv.CurrentRow.Cells["username"].Value?.ToString();
+
+            var confirm = MessageBox.Show(
+                $"Delete staff account '{username}'?",
+                "Confirm delete",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning
+            );
+
+            if (confirm == DialogResult.Yes)
             {
-                if (service.Delete(id, out string err))
+                if (service.DeleteStaffAccount(accountId, out string err))
                 {
                     MessageBox.Show("Deleted!");
                     LoadGrid();
-                    ClearForm();
                 }
                 else MessageBox.Show(err);
             }
         }
 
-        private void Dgv_CellClick(object sender, DataGridViewCellEventArgs e)
-        {
-            if (e.RowIndex < 0) return;
-            var r = dgv.Rows[e.RowIndex];
-
-            txtId.Text = r.Cells["category_id"].Value?.ToString();
-            txtName.Text = r.Cells["category_name"].Value?.ToString();
-        }
-
         private void ClearForm()
         {
-            txtId.Clear();
-            txtName.Clear();
+            txtUser.Clear();
+            txtPass.Clear();
         }
 
-        // ================= UI HELPERS =================
         private Button MakeButton(string text, Color backColor)
         {
             return new Button
             {
                 Text = text,
-                Width = 95,
+                Width = 135,
                 Height = 32,
                 BackColor = backColor,
                 ForeColor = Color.White,
